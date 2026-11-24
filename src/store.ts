@@ -10,6 +10,12 @@ export interface LabState {
   wireColor: WireColorChoice;
   controls: KitControls;
   rows: Row[];
+  /**
+   * Readings recorded since the procedure was last restarted. Same shape as `rows`;
+   * the procedure checklist looks only at these, so restarting it does not re-tick
+   * steps from older readings (which stay in `rows` for the tables).
+   */
+  checkRows: Row[];
   activeRow: number;
   stepsDone: number[];
   solutionUsed: boolean;
@@ -22,7 +28,8 @@ export interface LabState {
 export interface LabActions {
   addWire: (a: string, b: string, color: SocketColor) => void;
   removeWire: (id: string) => void;
-  clearWires: () => void;
+  /** Remove every cord and restart the procedure checklist; recorded readings are kept. */
+  restartProcedure: () => void;
   setWires: (pairs: [string, string][], colorOf: (s: string) => SocketColor) => void;
   setWireColor: (c: WireColorChoice) => void;
   setControl: <K extends keyof KitControls>(group: K, value: KitControls[K]) => void;
@@ -52,6 +59,7 @@ function initial(p: PracticalDef): LabState {
     wireColor: 'auto',
     controls: defaultControls(p.kit),
     rows: Array.from({ length: p.defaultRows }, () => ({})),
+    checkRows: Array.from({ length: p.defaultRows }, () => ({})),
     activeRow: 0,
     stepsDone: [],
     solutionUsed: false,
@@ -82,9 +90,14 @@ export function getLabStore(p: PracticalDef): LabStore {
   const base = initial(p);
   const savedControls = saved?.controls;
 
+  // Progress saved before the checklist reset existed: count all of it as recorded since the last restart.
+  const savedRows = saved?.rows ?? base.rows;
+  const checkRows = savedRows.map((_, i) => ({ ...(saved?.checkRows?.[i] ?? (saved?.checkRows ? {} : savedRows[i])) }));
+
   store = create<LabState & LabActions>()((set) => ({
     ...base,
     ...(saved ?? {}),
+    checkRows,
     // Keep saved knob and dial settings, but never come back with mains on or a blown fuse.
     controls: {
       ...base.controls,
@@ -105,7 +118,7 @@ export function getLabStore(p: PracticalDef): LabStore {
         return { wires: [...s.wires, { id: newId(), a, b, color }] };
       }),
     removeWire: (id) => set((s) => ({ wires: s.wires.filter((w) => w.id !== id) })),
-    clearWires: () => set({ wires: [] }),
+    restartProcedure: () => set((s) => ({ wires: [], stepsDone: [], checkRows: s.rows.map(() => ({})) })),
     setWires: (pairs, colorOf) =>
       set({ wires: pairs.map(([a, b]) => ({ id: newId(), a, b, color: colorOf(a) })), solutionUsed: true }),
     setWireColor: (c) => set({ wireColor: c }),
@@ -114,16 +127,28 @@ export function getLabStore(p: PracticalDef): LabStore {
       set((s) => ({ controls: { ...s.controls, [group]: { ...(s.controls[group] as object), [id]: value } } })),
     blowFuse: () => set((s) => ({ controls: { ...s.controls, fuseBlown: true } })),
     resetFuse: () => set((s) => ({ controls: { ...s.controls, fuseBlown: false, mains: false } })),
-    setCell: (row, k, value) => set((s) => ({ rows: s.rows.map((r, i) => (i === row ? { ...r, [k]: value } : r)) })),
-    setCells: (row, values) => set((s) => ({ rows: s.rows.map((r, i) => (i === row ? { ...r, ...values } : r)) })),
-    setRows: (rows) => set({ rows: rows.map((r) => ({ ...r })), activeRow: 0 }),
+    setCell: (row, k, value) =>
+      set((s) => ({
+        rows: s.rows.map((r, i) => (i === row ? { ...r, [k]: value } : r)),
+        checkRows: s.checkRows.map((r, i) => (i === row ? { ...r, [k]: value } : r)),
+      })),
+    setCells: (row, values) =>
+      set((s) => ({
+        rows: s.rows.map((r, i) => (i === row ? { ...r, ...values } : r)),
+        checkRows: s.checkRows.map((r, i) => (i === row ? { ...r, ...values } : r)),
+      })),
+    setRows: (rows) => set({ rows: rows.map((r) => ({ ...r })), checkRows: rows.map((r) => ({ ...r })), activeRow: 0 }),
     setActiveRow: (i) => set({ activeRow: i }),
-    addRow: () => set((s) => (s.rows.length >= p.maxRows ? s : { rows: [...s.rows, {}], activeRow: s.rows.length })),
+    addRow: () =>
+      set((s) =>
+        s.rows.length >= p.maxRows ? s : { rows: [...s.rows, {}], checkRows: [...s.checkRows, {}], activeRow: s.rows.length },
+      ),
     removeRow: (i) =>
       set((s) => {
         if (s.rows.length <= 1) return s;
         const rows = s.rows.filter((_, j) => j !== i);
-        return { rows, activeRow: Math.min(s.activeRow, rows.length - 1) };
+        const checkRows = s.checkRows.filter((_, j) => j !== i);
+        return { rows, checkRows, activeRow: Math.min(s.activeRow, rows.length - 1) };
       }),
     markSteps: (done) =>
       set((s) => {
@@ -138,7 +163,19 @@ export function getLabStore(p: PracticalDef): LabStore {
 
   store.subscribe((s) => {
     try {
-      const { wires, wireColor, controls, rows, activeRow, stepsDone, solutionUsed, showReadout, meterError, digitalMeters } = s;
+      const {
+        wires,
+        wireColor,
+        controls,
+        rows,
+        checkRows,
+        activeRow,
+        stepsDone,
+        solutionUsed,
+        showReadout,
+        meterError,
+        digitalMeters,
+      } = s;
       localStorage.setItem(
         key,
         JSON.stringify({
@@ -146,6 +183,7 @@ export function getLabStore(p: PracticalDef): LabStore {
           wireColor,
           controls,
           rows,
+          checkRows,
           activeRow,
           stepsDone,
           solutionUsed,

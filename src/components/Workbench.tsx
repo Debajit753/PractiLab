@@ -61,7 +61,8 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
   const meterValues = Object.fromEntries(readings.map((r) => [r.meter.id, r.display]));
 
   // Procedure steps tick themselves off and stay ticked.
-  const live = practical.steps.map((st) => st.check({ an, rows: s.rows, controls: c }));
+  // The checklist only counts readings recorded since the procedure was last restarted.
+  const live = practical.steps.map((st) => st.check({ an, rows: s.checkRows, controls: c }));
   useEffect(() => {
     const done = live.flatMap((ok, i) => (ok ? [i] : []));
     if (done.some((i) => !s.stepsDone.includes(i))) s.markSteps(done);
@@ -255,8 +256,15 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
             <button
               className="btn"
               onClick={() => {
-                if (s.wires.length && !confirm('Remove all cords from the kit?')) return;
-                s.clearWires();
+                if (
+                  (s.wires.length || s.stepsDone.length) &&
+                  !confirm(
+                    'Remove all cords and restart the procedure checklist? Your recorded readings stay in the Observations tables.',
+                  )
+                )
+                  return;
+                s.restartProcedure();
+                setSelectedWire(null);
               }}
             >
               Clear all cords
