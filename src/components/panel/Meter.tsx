@@ -1,19 +1,10 @@
 import { useEffect, useRef } from 'react';
+import { digitalDecimals } from '../../engine/readout';
 import type { MeterDef, MeterRange } from '../../kits/types';
 import { Screw } from './parts';
 
 const SPAN = 46; // degrees either side of vertical
 const SCALE_R = 112;
-
-/**
- * Analog moving-coil meter. The needle follows the value with a damped spring,
- * so it swings and settles like a real meter. Values past the ends pin the
- * needle slightly beyond the scale.
- */
-/** Decimal places a 3½-digit panel meter shows on this range. */
-export function digitalDecimals(full: number) {
-  return full <= 2 ? 3 : full <= 50 ? 2 : full <= 500 ? 1 : 0;
-}
 
 /** Red LED panel meter, like the digital trainer kits. */
 function DigitalMeter({ def, range, value }: { def: MeterDef; range: MeterRange; value: number }) {
@@ -64,6 +55,11 @@ export function Meter({
   return <AnalogMeter def={def} range={range} value={value} showDigital={showDigital} />;
 }
 
+/**
+ * Analog moving-coil meter. The needle follows the value with a damped spring,
+ * so it swings and settles like a real meter. Values past the ends pin the
+ * needle slightly beyond the scale.
+ */
 function AnalogMeter({
   def,
   range,

@@ -1,3 +1,4 @@
+import { withAuto } from './autoSteps';
 import { diode } from './diode';
 import { kclKvl } from './kclKvl';
 import { maxPower } from './maxPower';
@@ -20,27 +21,32 @@ export const beeeCatalog: CatalogItem[] = [
     id: 'kcl-kvl',
     title: 'KCL and KVL',
     blurb: "Verify Kirchhoff's current and voltage laws on a two-branch DC circuit.",
-    practical: kclKvl,
+    practical: withAuto(kclKvl),
   },
-  { id: 'thevenin', title: "Thevenin's Theorem", blurb: 'Find Vth and Rth, then check the load current.', practical: thevenin },
-  { id: 'norton', title: "Norton's Theorem", blurb: 'Measure the short-circuit current IN and RN.', practical: norton },
+  {
+    id: 'thevenin',
+    title: "Thevenin's Theorem",
+    blurb: 'Find Vth and Rth, then check the load current.',
+    practical: withAuto(thevenin),
+  },
+  { id: 'norton', title: "Norton's Theorem", blurb: 'Measure the short-circuit current IN and RN.', practical: withAuto(norton) },
   {
     id: 'superposition',
     title: 'Superposition Theorem',
     blurb: 'Two sources, one at a time, then both together.',
-    practical: superposition,
+    practical: withAuto(superposition),
   },
   {
     id: 'max-power',
     title: 'Maximum Power Transfer',
     blurb: 'Sweep the load on a decade box and find the peak.',
-    practical: maxPower,
+    practical: withAuto(maxPower),
   },
   {
     id: 'pn-diode',
     title: 'PN Junction Diode',
     blurb: 'Forward and reverse V-I characteristics, plotted live.',
-    practical: diode,
+    practical: withAuto(diode),
   },
   {
     id: 'sandbox',

@@ -1,34 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
+import { runAuto } from '../engine/autoStep';
 import { analyze, type MeterReading } from '../engine/circuit';
-import { UNIT_FACTOR, type MeterUnit, type SocketColor } from '../kits/types';
-import type { PracticalDef } from '../practicals/types';
+import { digitalDecimals, recordedValue } from '../engine/readout';
+import { UNIT_FACTOR, type SocketColor } from '../kits/types';
+import { keyInPart, stepsOfPart, type PracticalDef } from '../practicals/types';
 import { getLabStore, type WireColorChoice } from '../store';
 import { KitPanel } from './panel/KitPanel';
-import { digitalDecimals } from './panel/Meter';
 import { WIRE_COLORS } from './panel/parts';
 
 const COLOR_CHOICES: WireColorChoice[] = ['auto', 'red', 'black', 'yellow', 'blue', 'green'];
-
-/**
- * The value a student writes down: the digits shown on a digital display or
- * readout, or else a fifth of the smallest division on an analog scale.
- */
-function readOff(display: number, r: MeterReading, digital: boolean) {
-  if (digital) {
-    const f = 10 ** digitalDecimals(r.range.full);
-    return Math.round(display * f) / f;
-  }
-  const div = r.range.full / (r.range.majors * r.range.minorsPerMajor);
-  const step = div / 5;
-  return Math.round(display / step) * step;
-}
 
 export function meterName(r: MeterReading) {
   const what = r.meter.kind === 'V' ? 'Voltmeter' : r.range.unit === 'µA' ? 'Microammeter' : 'Milliammeter';
   return `${what} (0-${r.range.full} ${r.range.unit})`;
 }
-
-const unitFactor = (u: string) => (u in UNIT_FACTOR ? UNIT_FACTOR[u as MeterUnit] : 1);
 
 export function Workbench({ practical }: { practical: PracticalDef }) {
   const store = getLabStore(practical);
@@ -60,14 +45,18 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
   });
   const meterValues = Object.fromEntries(readings.map((r) => [r.meter.id, r.display]));
 
+  // Practicals with parts (KCL and KVL) show one part's procedure at a time.
+  const parts = practical.parts;
+  const part = parts?.find((x) => x.id === s.part) ?? parts?.[0];
+  const partSteps = stepsOfPart(practical, part);
+
   // Procedure steps tick themselves off and stay ticked.
   // The checklist only counts readings recorded since the procedure was last restarted.
-  const live = practical.steps.map((st) => st.check({ an, rows: s.checkRows, controls: c }));
+  const live = partSteps.filter((i) => practical.steps[i].check({ an, rows: s.checkRows, controls: c }));
   useEffect(() => {
-    const done = live.flatMap((ok, i) => (ok ? [i] : []));
-    if (done.some((i) => !s.stepsDone.includes(i))) s.markSteps(done);
+    if (live.some((i) => !s.stepsDone.includes(i))) s.markSteps(live);
   });
-  const current = practical.steps.findIndex((_, i) => !s.stepsDone.includes(i));
+  const current = partSteps.find((i) => !s.stepsDone.includes(i)) ?? -1;
   useEffect(() => {
     setHintFor(null);
     setShowCord(false);
@@ -103,20 +92,19 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
         skipped.push(`${meterName(r)} is deflecting backwards`);
         continue;
       }
-      const m = practical.measured[r.measurement.key];
-      if (allowed && !allowed.includes(r.measurement.key)) {
-        ignored.push(m?.label ?? r.measurement.key);
+      const key = keyInPart(part, r.measurement.key);
+      const m = practical.measured[key];
+      if ((part && !part.keys.includes(key)) || (allowed && !allowed.includes(key))) {
+        ignored.push(m?.label ?? key);
         continue;
       }
-      const si = readOff(r.display, r, digital || s.showReadout) / UNIT_FACTOR[r.range.unit];
       // Meter wired against the marked direction but reading forwards: the quantity is negative.
-      const sign = r.reversed ? -1 : 1;
-      if (r.reversed && Math.abs(si) > 0) flipped = true;
-      const v = +(sign * si * unitFactor(m?.unit ?? '')).toFixed(6);
-      const old = s.rows[s.activeRow]?.[r.measurement.key];
-      if (old != null && Math.abs(old - v) > 1e-9) replaced.push(`${m?.label ?? r.measurement.key} (was ${old})`);
-      values[r.measurement.key] = v;
-      saved.push(`${m?.label ?? r.measurement.key} = ${v.toFixed(m?.decimals ?? 2)} ${m?.unit ?? ''}`);
+      const v = recordedValue(r.display, r, m?.unit ?? '', digital || s.showReadout);
+      if (r.reversed && v !== 0) flipped = true;
+      const old = s.rows[s.activeRow]?.[key];
+      if (old != null && Math.abs(old - v) > 1e-9) replaced.push(`${m?.label ?? key} (was ${old})`);
+      values[key] = v;
+      saved.push(`${m?.label ?? key} = ${v.toFixed(m?.decimals ?? 2)} ${m?.unit ?? ''}`);
     }
     if (flipped) skipped.push('A negative value means the current flows opposite to the arrow marked on the kit');
     if (!saved.length) {
@@ -151,6 +139,21 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
     }
     setToast({
       text: `Saved in reading ${row + 1}: ${saved.join(', ')}.${replaced.length ? ` Replaced ${replaced.join(', ')}.` : ''}${ignored.length ? ` Not saved (not needed in this step): ${ignored.join(', ')}.` : ''}${skipped.length ? ` ${skipped.join(', ')}.` : ''}${note}`,
+      kind: 'ok',
+    });
+  };
+
+  const doStep = (i: number) => {
+    const snap = runAuto(
+      practical,
+      i,
+      { wires: s.wires, controls: c, rows: s.rows, checkRows: s.checkRows, activeRow: s.activeRow },
+      colorFor,
+    );
+    s.applyStep(snap, i);
+    setSelectedWire(null);
+    setToast({
+      text: `${part ? `${part.label} step` : 'Step'} ${partSteps.indexOf(i) + 1} done for you.${snap.notes.length ? ` Recorded: ${snap.notes.join('; ')}.` : ''}`,
       kind: 'ok',
     });
   };
@@ -259,11 +262,11 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
                 if (
                   (s.wires.length || s.stepsDone.length) &&
                   !confirm(
-                    'Remove all cords and restart the procedure checklist? Your recorded readings stay in the Observations tables.',
+                    `Remove all cords and restart the ${part ? `${part.label} ` : ''}procedure checklist? Your recorded readings stay in the Observations tables.`,
                   )
                 )
                   return;
-                s.restartProcedure();
+                s.restartProcedure(part ? partSteps : undefined, part?.keys);
                 setSelectedWire(null);
               }}
             >
@@ -338,16 +341,18 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
             </button>
           </div>
           <div className="row-chips">
-            {Object.entries(practical.measured).map(([k, m]) => (
-              <span
-                key={k}
-                className={`chip ${row[k] != null ? 'filled' : ''}`}
-                title={row[k] != null ? `${row[k]} ${m.unit}` : 'not recorded'}
-              >
-                {m.label}
-                {row[k] != null ? ` ${(row[k] as number).toFixed(m.decimals)}` : ''}
-              </span>
-            ))}
+            {Object.entries(practical.measured)
+              .filter(([k]) => !part || part.keys.includes(k))
+              .map(([k, m]) => (
+                <span
+                  key={k}
+                  className={`chip ${row[k] != null ? 'filled' : ''}`}
+                  title={row[k] != null ? `${row[k]} ${m.unit}` : 'not recorded'}
+                >
+                  {m.label}
+                  {row[k] != null ? ` ${(row[k] as number).toFixed(m.decimals)}` : ''}
+                </span>
+              ))}
           </div>
           {toast && <div className={`alert ${toast.kind}`}>{toast.text}</div>}
           <div className="options">
@@ -370,27 +375,60 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
 
         <section className="card">
           <h3>Procedure</h3>
+          {parts && (
+            <div className="part-switch" role="tablist" aria-label="Procedure">
+              {parts.map((pt) => {
+                const steps = stepsOfPart(practical, pt);
+                const done = steps.filter((i) => s.stepsDone.includes(i)).length;
+                return (
+                  <button
+                    key={pt.id}
+                    role="tab"
+                    aria-selected={pt.id === part?.id}
+                    className={pt.id === part?.id ? 'on' : ''}
+                    onClick={() => {
+                      s.setPart(pt.id, pt.keys);
+                      setSelectedWire(null);
+                    }}
+                  >
+                    {pt.label}
+                    <span className="part-count">{done === steps.length ? '✓' : `${done}/${steps.length}`}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <ol className="steps">
-            {practical.steps.map((st, i) => {
+            {partSteps.map((i, n) => {
+              const st = practical.steps[i];
               const done = s.stepsDone.includes(i);
               return (
                 <li key={i} className={done ? 'done' : i === current ? 'current' : ''}>
                   <span className="tick" aria-hidden>
-                    {done ? '✓' : i + 1}
+                    {done ? '✓' : n + 1}
                   </span>
                   <div>
                     <div>{st.text}</div>
-                    {i === current && (st.hint?.length || st.hintText) && (
+                    {i === current && (
                       <div className="step-hint">
                         <div className="hint-buttons">
-                          <button className="link" onClick={() => setHintFor(hintFor === i ? null : i)}>
-                            {hintFor === i ? 'Hide hint' : 'Hint'}
-                          </button>
+                          {(st.hint?.length || st.hintText) && (
+                            <button className="link" onClick={() => setHintFor(hintFor === i ? null : i)}>
+                              {hintFor === i ? 'Hide hint' : 'Hint'}
+                            </button>
+                          )}
                           {nextCord && (
                             <button className="link" onClick={() => setShowCord(!showCord)}>
                               {showCord ? 'Hide next cord' : 'Show next cord'}
                             </button>
                           )}
+                          <button
+                            className="btn small-btn"
+                            title="Do this step for me, then go to the next one"
+                            onClick={() => doStep(i)}
+                          >
+                            {i === partSteps[partSteps.length - 1] ? 'Finish' : 'Next step →'}
+                          </button>
                         </div>
                         {showCord && nextCord && (
                           <span className="small next-cord">
@@ -404,7 +442,7 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
                         {hintFor === i && (
                           <span className="muted small">
                             {st.hintText ??
-                              `Use the flashing sockets: ${st.hint!.map((h) => kit.sockets.find((x) => x.id === h)?.name).join(', ')}.`}
+                              `Use the flashing sockets: ${(st.hint ?? []).map((h) => kit.sockets.find((x) => x.id === h)?.name).join(', ')}.`}
                           </span>
                         )}
                       </div>
@@ -414,7 +452,16 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
               );
             })}
           </ol>
-          {current === -1 && <div className="alert ok">All steps done. Open the Observations tab to see your result.</div>}
+          {current === -1 && (
+            <div className="alert ok">
+              {(() => {
+                const next = parts?.find((pt) => stepsOfPart(practical, pt).some((i) => !s.stepsDone.includes(i)));
+                return part && next
+                  ? `All ${part.label} steps done. Switch to ${next.label} above for the next part, or open the Observations tab.`
+                  : 'All steps done. Open the Observations tab to see your result.';
+              })()}
+            </div>
+          )}
         </section>
       </aside>
     </div>

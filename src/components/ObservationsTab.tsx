@@ -266,7 +266,7 @@ export function ObservationsTab({ practical }: { practical: PracticalDef }) {
             </div>
           </div>
         ))}
-        {s.solutionUsed && <p className="muted small">Note: "Show solution" was used to wire the kit.</p>}
+        {s.solutionUsed && <p className="muted small">Note: "Show solution" or "Next step" did some of this work for you.</p>}
       </section>
 
       <section className="no-print">

@@ -10,7 +10,7 @@ Runs entirely in the browser. No accounts, no server, no internet needed after i
 
 | Practical | Kit | What the student does |
 |---|---|---|
-| KCL and KVL | 50 / 100 / 220 / 330 Ω network, 0-5 V supply | Measures branch currents and resistor voltages, checks I = I1 + I2 and Vs = VR1 + VR2 |
+| KCL and KVL | 50 / 100 / 220 / 330 Ω network, 0-5 V supply | Two procedures with a KCL / KVL switch: measures branch currents to check I = I1 + I2, and resistor voltages to check Vs = VR1 + VR2 |
 | Thevenin's theorem | Network, RL potentiometer, Thevenin's equivalent circuit section | Finds Vth and Rth, sweeps RL, then builds the equivalent and checks IL' = IL |
 | Norton's theorem | Same trainer | Measures IN and RN, checks IL = IN·RN / (RN + RL) |
 | Superposition | Two supplies with changeover switches | Measures I1, I2, I3 for each source alone and both together |
@@ -20,7 +20,7 @@ Runs entirely in the browser. No accounts, no server, no internet needed after i
 Each practical has three tabs:
 
 - **Theory:** aim, apparatus, theory, circuit diagram, formulas, expected readings, precautions, and a link to the matching [Virtual Labs](https://www.vlab.co.in/) experiment.
-- **Workbench:** the interactive kit with a step-by-step procedure that ticks itself off, hints, a "show next cord" guide, digital or analog meters, and a Record button that fills the observation table.
+- **Workbench:** the interactive kit with a step-by-step procedure that ticks itself off, hints, a "show next cord" guide, a **Next step** button that does the current step for the student (cords, knobs and readings), digital or analog meters, and a Record button that fills the observation table.
 - **Observations and Result:** editable tables, theory vs measured % error, graphs, an automatic result, viva questions, and Save as PDF.
 
 ### Breadboard Sandbox

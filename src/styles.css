@@ -433,6 +433,41 @@ a.tile:hover {
   border: 1px solid #bfe6cf;
 }
 
+/* KCL | KVL procedure switch */
+.part-switch {
+  display: flex;
+  padding: 3px;
+  margin: 0 0 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.part-switch button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.part-switch button.on {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+.part-switch .part-count {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
 .steps {
   list-style: none;
   margin: 0;
@@ -792,4 +827,14 @@ a.tile:hover {
   border-radius: 8px;
   padding: 6px 12px;
   text-align: right;
+}
+
+.hint-buttons {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.small-btn {
+  padding: 3px 10px;
+  font-size: 0.82rem;
+  margin-left: auto;
 }

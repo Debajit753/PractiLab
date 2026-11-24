@@ -1,4 +1,5 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
+import type { LabSnapshot } from './engine/autoStep';
 import { defaultControls, type KitControls } from './engine/circuit';
 import type { SocketColor, Wire } from './kits/types';
 import type { PracticalDef, Row } from './practicals/types';
@@ -18,6 +19,10 @@ export interface LabState {
   checkRows: Row[];
   activeRow: number;
   stepsDone: number[];
+  /** Selected procedure part (e.g. 'kcl' or 'kvl'), for practicals that have parts. */
+  part?: string;
+  /** Cords and settings of the parts not on the bench right now, so each part keeps its own wiring. */
+  benches: Record<string, { wires: Wire[]; controls: KitControls }>;
   solutionUsed: boolean;
   /** Digital readout drawn on each analog meter. */
   showReadout: boolean;
@@ -28,8 +33,16 @@ export interface LabState {
 export interface LabActions {
   addWire: (a: string, b: string, color: SocketColor) => void;
   removeWire: (id: string) => void;
-  /** Remove every cord and restart the procedure checklist; recorded readings are kept. */
-  restartProcedure: () => void;
+  /**
+   * Remove every cord and restart the procedure checklist; recorded readings are kept.
+   * With `steps` and `keys`, only those steps and checklist readings are reset (one part of the practical).
+   */
+  restartProcedure: (steps?: number[], keys?: string[]) => void;
+  /**
+   * Switch to another part of the procedure: put this part's cords and settings aside, bring back
+   * the other part's (an empty kit the first time), and pick the first reading row it has not filled.
+   */
+  setPart: (id: string, keys: string[]) => void;
   setWires: (pairs: [string, string][], colorOf: (s: string) => SocketColor) => void;
   setWireColor: (c: WireColorChoice) => void;
   setControl: <K extends keyof KitControls>(group: K, value: KitControls[K]) => void;
@@ -43,6 +56,8 @@ export interface LabActions {
   addRow: () => void;
   removeRow: (i: number) => void;
   markSteps: (done: number[]) => void;
+  /** Apply the result of "Next step" (cords, controls and readings) and tick that step. */
+  applyStep: (snap: LabSnapshot, step: number) => void;
   setShowReadout: (v: boolean) => void;
   setMeterError: (v: boolean) => void;
   setDigitalMeters: (v: boolean) => void;
@@ -62,6 +77,8 @@ function initial(p: PracticalDef): LabState {
     checkRows: Array.from({ length: p.defaultRows }, () => ({})),
     activeRow: 0,
     stepsDone: [],
+    part: p.parts?.[0]?.id,
+    benches: {},
     solutionUsed: false,
     showReadout: true,
     meterError: false,
@@ -109,6 +126,12 @@ export function getLabStore(p: PracticalDef): LabStore {
       mains: false,
       fuseBlown: false,
     },
+    benches: Object.fromEntries(
+      Object.entries(saved?.benches ?? {}).map(([id, b]) => [
+        id,
+        { wires: b.wires, controls: { ...base.controls, ...b.controls, mains: false, fuseBlown: false } },
+      ]),
+    ),
 
     addWire: (a, b, color) =>
       set((s) => {
@@ -118,7 +141,24 @@ export function getLabStore(p: PracticalDef): LabStore {
         return { wires: [...s.wires, { id: newId(), a, b, color }] };
       }),
     removeWire: (id) => set((s) => ({ wires: s.wires.filter((w) => w.id !== id) })),
-    restartProcedure: () => set((s) => ({ wires: [], stepsDone: [], checkRows: s.rows.map(() => ({})) })),
+    restartProcedure: (steps, keys) =>
+      set((s) => ({
+        wires: [],
+        stepsDone: steps ? s.stepsDone.filter((i) => !steps.includes(i)) : [],
+        checkRows: keys
+          ? s.checkRows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !keys.includes(k))))
+          : s.rows.map(() => ({})),
+      })),
+    setPart: (id, keys) =>
+      set((s) => {
+        if (id === s.part) return s;
+        const free = s.rows.findIndex((r) => keys.every((k) => r[k] == null));
+        const benches = { ...s.benches };
+        if (s.part) benches[s.part] = { wires: s.wires, controls: s.controls };
+        const next = benches[id] ?? { wires: [], controls: { ...s.controls, mains: false, fuseBlown: false } };
+        delete benches[id];
+        return { part: id, benches, wires: next.wires, controls: next.controls, activeRow: free >= 0 ? free : s.activeRow };
+      }),
     setWires: (pairs, colorOf) =>
       set({ wires: pairs.map(([a, b]) => ({ id: newId(), a, b, color: colorOf(a) })), solutionUsed: true }),
     setWireColor: (c) => set({ wireColor: c }),
@@ -150,6 +190,16 @@ export function getLabStore(p: PracticalDef): LabStore {
         const checkRows = s.checkRows.filter((_, j) => j !== i);
         return { rows, checkRows, activeRow: Math.min(s.activeRow, rows.length - 1) };
       }),
+    applyStep: (snap, step) =>
+      set((s) => ({
+        wires: snap.wires,
+        controls: snap.controls,
+        rows: snap.rows,
+        checkRows: snap.checkRows,
+        activeRow: snap.activeRow,
+        stepsDone: Array.from(new Set([...s.stepsDone, step])).sort((a, b) => a - b),
+        solutionUsed: true,
+      })),
     markSteps: (done) =>
       set((s) => {
         const merged = Array.from(new Set([...s.stepsDone, ...done])).sort((a, b) => a - b);
@@ -171,6 +221,8 @@ export function getLabStore(p: PracticalDef): LabStore {
         checkRows,
         activeRow,
         stepsDone,
+        part,
+        benches,
         solutionUsed,
         showReadout,
         meterError,
@@ -186,6 +238,8 @@ export function getLabStore(p: PracticalDef): LabStore {
           checkRows,
           activeRow,
           stepsDone,
+          part,
+          benches,
           solutionUsed,
           showReadout,
           meterError,

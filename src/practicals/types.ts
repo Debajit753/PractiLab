@@ -17,8 +17,55 @@ export interface StepContext {
   controls: KitControls;
 }
 
+/** A number, or one worked out from the readings so far (e.g. "set RTH to the measured Rth"). */
+export type AutoValue = number | ((rows: Row[]) => number);
+
+/** One action of a step carried out for the student by "Next step". */
+export type AutoAction =
+  /** Pull every cord out of these sockets. */
+  | { do: 'unplug'; sockets: string[] }
+  /** Pull out these cords. */
+  | { do: 'remove'; pairs: [string, string][] }
+  /** Plug in these cords (already present ones are left alone). */
+  | { do: 'add'; pairs: [string, string][] }
+  /** Set controls: mains switch, knobs, decade boxes, switches and meter ranges. */
+  | {
+      do: 'set';
+      mains?: boolean;
+      knobs?: Record<string, AutoValue>;
+      decades?: Record<string, AutoValue>;
+      switches?: Record<string, 'a' | 'b'>;
+      ranges?: Record<string, number>;
+    }
+  /** Turn a knob until a meter reads the target (in volts or amps). */
+  | { do: 'seek'; knob: string; meter: string; target: AutoValue }
+  /** Choose the reading row: a number, or 'empty' for this row if empty, else the next empty one. */
+  | { do: 'row'; row: number | 'empty' }
+  /** Press Record reading. */
+  | { do: 'record' };
+
+/** A separate procedure within one practical (e.g. KCL and KVL), chosen with a switch on the Workbench. */
+export interface PartDef {
+  id: string;
+  label: string;
+  /** Readings this part records. Record saves only these while the part is selected. */
+  keys: string[];
+  /** Save a meter's reading under another key in this part (e.g. the KVL supply voltage, kept apart from KCL's). */
+  alias?: Record<string, string>;
+}
+
+/** The part a step belongs to (undefined when the practical has one procedure). */
+export const partOfStep = (p: PracticalDef, step: StepDef) => p.parts?.find((x) => x.id === step.part);
+/** Indices of the steps in a part, or every step when there are no parts. */
+export const stepsOfPart = (p: PracticalDef, part?: PartDef) =>
+  p.steps.flatMap((st, i) => (!part || st.part === part.id ? [i] : []));
+/** The key a meter's reading is saved under in this part. */
+export const keyInPart = (part: PartDef | undefined, key: string) => part?.alias?.[key] ?? key;
+
 export interface StepDef {
   text: string;
+  /** Which part of the practical this step belongs to (see PracticalDef.parts). */
+  part?: string;
   check: (ctx: StepContext) => boolean;
   /** Sockets to flash when the student asks for a hint. Read in pairs, they are also the cords this step needs. */
   hint?: string[];
@@ -26,6 +73,8 @@ export interface StepDef {
   noCords?: boolean;
   /** Readings this step asks for. While it is the current step, Record saves only these. */
   records?: string[];
+  /** What "Next step" does to complete this step for the student. */
+  auto?: AutoAction[];
   hintText?: string;
 }
 
@@ -82,6 +131,8 @@ export interface PracticalDef {
   formulas: { label: string; expr: string }[];
   precautions: string[];
   steps: StepDef[];
+  /** Separate procedures (e.g. KCL and KVL) the student switches between. Each step names its part. */
+  parts?: PartDef[];
   /** Keys recorded from meters or controls, with units and display decimals. */
   measured: Record<string, { label: string; unit: string; decimals: number }>;
   /** Values copied from kit controls into the row on every recording (e.g. RL from the decade box). */

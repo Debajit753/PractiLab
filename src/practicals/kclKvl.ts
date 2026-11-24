@@ -11,6 +11,10 @@ function theoryAt(vs: number): Record<string, number> {
 
 const recordedAnywhere = (rows: Row[], key: string) => rows.some((r) => r[key] != null);
 
+// KCL and KVL are separate procedures, each with its own supply voltage (KVL's Vs is saved as Vk).
+const KCL_KEYS = ['Vs', 'I', 'I1', 'I2'];
+const KVL_KEYS = ['Vk', 'VR1', 'VR2', 'VR3', 'VR4'];
+
 export const kclKvl: PracticalDef = {
   id: 'kcl-kvl',
   title: "Verification of Kirchhoff's Current Law and Voltage Law",
@@ -63,65 +67,125 @@ export const kclKvl: PracticalDef = {
     'Read the meter looking straight at the needle to avoid parallax error.',
     'Do not exceed 5 V, so the total current stays within the 50 mA meter range.',
   ],
+  parts: [
+    { id: 'kcl', label: 'KCL', keys: KCL_KEYS },
+    { id: 'kvl', label: 'KVL', keys: KVL_KEYS, alias: { Vs: 'Vk' } },
+  ],
   steps: [
+    // ---------- KCL ----------
     {
+      part: 'kcl',
       text: 'Connect OUTPUT + to INPUT + and OUTPUT − to INPUT − with patch cords.',
       check: ({ an }) => an.bridged('outP', 'inP') && an.bridged('outN', 'inN'),
       hint: ['outP', 'inP', 'outN', 'inN'],
     },
     {
+      part: 'kcl',
       text: 'Connect the voltmeter across the input: V + to the red socket and V − to the black socket at the (V) symbol.',
       check: ({ an }) => an.readings.VM.measurement?.key === 'Vs' && !an.readings.VM.reversed,
       hint: ['Vp', 'J1', 'Vn', 'J2'],
     },
     {
-      text: 'Close branch A: put a cord across each dashed gap between the yellow sockets.',
-      check: ({ an }) => an.bridged('Y1', 'Y2') && an.bridged('Y3', 'Y4'),
-      hint: ['Y1', 'Y2', 'Y3', 'Y4'],
+      part: 'kcl',
+      text: 'Close both branches: put a cord across each dashed gap between the yellow sockets and between the blue sockets.',
+      check: ({ an }) => an.bridged('Y1', 'Y2') && an.bridged('Y3', 'Y4') && an.bridged('B1', 'B2') && an.bridged('B3', 'B4'),
+      hint: ['Y1', 'Y2', 'Y3', 'Y4', 'B1', 'B2', 'B3', 'B4'],
     },
     {
-      text: 'Close branch B: put a cord across each dashed gap between the blue sockets.',
-      check: ({ an }) => an.bridged('B1', 'B2') && an.bridged('B3', 'B4'),
-      hint: ['B1', 'B2', 'B3', 'B4'],
-    },
-    {
+      part: 'kcl',
       text: 'Connect the milliammeter at the (mA) symbol: mA + to the red socket, mA − to the black socket.',
       check: ({ an }) => an.readings.AM.measurement?.key === 'I' && !an.readings.AM.reversed,
       hint: ['Ap', 'Mp', 'An', 'Mn'],
     },
     {
+      part: 'kcl',
       text: 'Switch mains ON, turn SET VOLTS to about 2 V, then press Record to save Vs and the total current I.',
       check: ({ rows }) => recordedAnywhere(rows, 'Vs') && recordedAnywhere(rows, 'I'),
+      records: ['Vs', 'I'],
       hintText: 'Flip the toggle switch to ON, drag the SET VOLTS knob, then press Record reading.',
     },
     {
+      part: 'kcl',
       text: 'Move the milliammeter into branch A in place of one yellow cord, and put a cord across the (mA) symbol. Record I1.',
       check: ({ rows }) => recordedAnywhere(rows, 'I1'),
+      records: ['I1'],
       hint: ['Y1', 'Y2', 'Mp', 'Mn'],
       noCords: true,
       hintText:
         'Remove the Y1 to Y2 cord, wire mA + to the yellow socket after R1 and mA − to the next yellow socket, and link the red and black sockets at the (mA) symbol.',
     },
     {
+      part: 'kcl',
       text: 'Move the milliammeter into branch B in the same way and close branch A again. Record I2.',
       check: ({ rows }) => recordedAnywhere(rows, 'I2'),
+      records: ['I2'],
       hint: ['B1', 'B2'],
       noCords: true,
     },
     {
-      text: 'Move the voltmeter across R1, R2, R3 and R4 in turn (+ on the side nearer the supply +). Record each voltage.',
-      check: ({ rows }) => ['VR1', 'VR2', 'VR3', 'VR4'].every((k) => recordedAnywhere(rows, k)),
-      hintText: 'For R1, put V + on the red junction and V − on the yellow socket after R1.',
+      part: 'kcl',
+      text: 'Repeat Vs, I, I1 and I2 for at least 3 different supply voltages (one row each).',
+      check: ({ rows }) => rows.filter((r) => KCL_KEYS.every((k) => r[k] != null)).length >= 3,
+      records: KCL_KEYS,
+      hintText: 'Change SET VOLTS and record all four again. The reading row moves on by itself after I2.',
+    },
+    // ---------- KVL ----------
+    {
+      part: 'kvl',
+      text: 'Connect OUTPUT + to INPUT + and OUTPUT − to INPUT − with patch cords.',
+      check: ({ an }) => an.bridged('outP', 'inP') && an.bridged('outN', 'inN'),
+      hint: ['outP', 'inP', 'outN', 'inN'],
     },
     {
-      text: 'Repeat for at least 3 different supply voltages (one row each), then open the Observations tab.',
-      check: ({ rows }) =>
-        rows.filter((r) => ['Vs', 'I', 'I1', 'I2', 'VR1', 'VR2', 'VR3', 'VR4'].every((k) => r[k] != null)).length >= 3,
-      hintText: 'Select the next reading row on the right, change SET VOLTS, and record everything again.',
+      part: 'kvl',
+      text: 'Close both branches with a cord across every dashed gap, and put a cord across the (mA) symbol in place of the milliammeter (it is not needed for KVL).',
+      check: ({ an }) =>
+        an.bridged('Y1', 'Y2') &&
+        an.bridged('Y3', 'Y4') &&
+        an.bridged('B1', 'B2') &&
+        an.bridged('B3', 'B4') &&
+        an.bridged('Mp', 'Mn'),
+      hint: ['Y1', 'Y2', 'Y3', 'Y4', 'B1', 'B2', 'B3', 'B4', 'Mp', 'Mn'],
+    },
+    {
+      part: 'kvl',
+      text: 'Connect the voltmeter across the input (V + red, V − black at the (V) symbol). Switch mains ON, set about 2 V and record Vs.',
+      check: ({ rows }) => recordedAnywhere(rows, 'Vk'),
+      records: ['Vk'],
+      hint: ['Vp', 'J1', 'Vn', 'J2'],
+    },
+    {
+      part: 'kvl',
+      text: 'Loop 1: move the voltmeter across R1, then across R2 (+ on the side nearer the supply +). Record VR1 and VR2.',
+      check: ({ rows }) => recordedAnywhere(rows, 'VR1') && recordedAnywhere(rows, 'VR2'),
+      records: ['VR1', 'VR2'],
+      noCords: true,
+      hint: ['J1', 'Y1', 'Y2', 'Y3'],
+      hintText:
+        'For R1, put V + on the red junction and V − on the yellow socket after R1. For R2, use the two yellow sockets either side of R2.',
+    },
+    {
+      part: 'kvl',
+      text: 'Loop 2: move the voltmeter across R3, then across R4. Record VR3 and VR4.',
+      check: ({ rows }) => recordedAnywhere(rows, 'VR3') && recordedAnywhere(rows, 'VR4'),
+      records: ['VR3', 'VR4'],
+      noCords: true,
+      hint: ['J1', 'B1', 'B2', 'B3'],
+      hintText:
+        'For R3, put V + on the red junction and V − on the blue socket after R3. For R4, use the two blue sockets either side of R4.',
+    },
+    {
+      part: 'kvl',
+      text: 'Repeat Vs, VR1, VR2, VR3 and VR4 for at least 3 different supply voltages (one row each).',
+      check: ({ rows }) => rows.filter((r) => KVL_KEYS.every((k) => r[k] != null)).length >= 3,
+      records: KVL_KEYS,
+      hintText: 'Change SET VOLTS and record all five again. The reading row moves on by itself after VR4.',
     },
   ],
+  advanceWhen: [KCL_KEYS, KVL_KEYS],
   measured: {
     Vs: { label: 'Vs', unit: 'V', decimals: 2 },
+    Vk: { label: 'Vs', unit: 'V', decimals: 2 },
     I: { label: 'I', unit: 'mA', decimals: 2 },
     I1: { label: 'I1', unit: 'mA', decimals: 2 },
     I2: { label: 'I2', unit: 'mA', decimals: 2 },
@@ -144,7 +208,7 @@ export const kclKvl: PracticalDef = {
     {
       title: 'Table 2: Verification of KVL',
       columns: [
-        { key: 'Vs', label: 'Vs', unit: 'V', decimals: 2 },
+        { key: 'Vk', label: 'Vs', unit: 'V', decimals: 2 },
         { key: 'VR1', label: 'VR1', unit: 'V', decimals: 2 },
         { key: 'VR2', label: 'VR2', unit: 'V', decimals: 2 },
         { key: 'VR1+VR2', label: 'VR1 + VR2', unit: 'V', decimals: 2, derived: (r) => sum(r, 'VR1', 'VR2') },
@@ -169,7 +233,7 @@ export const kclKvl: PracticalDef = {
       law: 'Vs = VR1 + VR2',
       lhsLabel: 'Vs',
       rhsLabel: 'VR1 + VR2',
-      lhs: (r) => r.Vs,
+      lhs: (r) => r.Vk,
       rhs: (r) => sum(r, 'VR1', 'VR2'),
       unit: 'V',
     },
@@ -178,7 +242,7 @@ export const kclKvl: PracticalDef = {
       law: 'Vs = VR3 + VR4',
       lhsLabel: 'Vs',
       rhsLabel: 'VR3 + VR4',
-      lhs: (r) => r.Vs,
+      lhs: (r) => r.Vk,
       rhs: (r) => sum(r, 'VR3', 'VR4'),
       unit: 'V',
     },
@@ -193,9 +257,17 @@ export const kclKvl: PracticalDef = {
     },
   ],
   theoryFor: (r) => {
-    if (r.Vs == null) return null;
-    const { Vs: _vs, ...rest } = theoryAt(r.Vs);
-    return rest;
+    if (r.Vs == null && r.Vk == null) return null;
+    const out: Record<string, number> = {};
+    if (r.Vs != null) {
+      const t = theoryAt(r.Vs);
+      Object.assign(out, { I1: t.I1, I2: t.I2, I: t.I });
+    }
+    if (r.Vk != null) {
+      const t = theoryAt(r.Vk);
+      Object.assign(out, { VR1: t.VR1, VR2: t.VR2, VR3: t.VR3, VR4: t.VR4 });
+    }
+    return out;
   },
   expected: {
     caption: 'Use these to check your own readings. Small differences come from meter tolerance and reading error.',
