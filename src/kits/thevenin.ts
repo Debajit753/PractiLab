@@ -21,6 +21,9 @@ const loadOn = (q: QueryContext, a: string, b: string) =>
   (q.bridged(a, 'L1') && q.bridged(b, 'L2')) || (q.bridged(a, 'L2') && q.bridged(b, 'L1'));
 /** Source replaced by a short and the supply applied at A-B instead (to measure Rth). */
 const testing = (q: QueryContext) => q.sameNet('inP', 'inN') && !powered(q);
+/** The given network and the equivalent circuit joined by cords (e.g. RL plugged into both). */
+export const circuitsJoined = (q: QueryContext) =>
+  q.bridged('A', 'Aeq') || q.bridged('B', 'Beq') || q.bridged('A', 'Beq') || q.bridged('B', 'Aeq');
 
 const Y1 = 570;
 const Y2 = 800;
@@ -164,12 +167,12 @@ export const theveninKit: KitDef = {
   ],
   symbols: [],
   meters: [
-    { id: 'VM', kind: 'V', cx: 300, cy: 285, plus: 'Vp', minus: 'Vn', ranges: [range(20, 'V', 4, 10)] },
+    { id: 'VM', kind: 'V', cx: 300, cy: 285, plus: 'Vp', minus: 'Vn', ranges: [range(2, 'V', 4, 10), range(20, 'V', 4, 10)] },
     { id: 'AM', kind: 'A', cx: 1100, cy: 285, plus: 'Ap', minus: 'An', ranges: [range(20, 'mA', 4, 10)] },
   ],
   knobs: [
     { id: 'K1', x: 110, y: 680, max: TH.VMAX, label: ['SET VOLTS', `0-${TH.VMAX}V DC`] },
-    { id: 'KRL', x: 775, y: 262, max: TH.RL_MAX, step: 5, initial: 200, label: [] },
+    { id: 'KRL', x: 775, y: 262, max: TH.RL_MAX, step: 5, initial: 200, label: [], name: 'Load RL' },
     { id: 'KVTH', x: 820, y: 690, max: TH.VMAX, label: ['SET VTH', `0-${TH.VMAX}V DC`] },
     { id: 'KRTH', x: 1180, y: 665, max: TH.RTH_MAX, step: 5, initial: 500, label: ['RTH'], readout: 'Ω' },
   ],
@@ -230,6 +233,13 @@ export const theveninKit: KitDef = {
     ['Vn', 'B'],
   ],
 };
+
+for (const list of [theveninKit.voltageMeasurements, theveninKit.currentMeasurements]) {
+  for (const m of list) {
+    const when = m.when;
+    m.when = (q) => !circuitsJoined(q) && (when ? when(q) : true);
+  }
+}
 
 export function theveninTheory(vs: number) {
   const vth = (vs * TH.R2) / (TH.R1 + TH.R2);

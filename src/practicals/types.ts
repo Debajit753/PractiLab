@@ -24,6 +24,8 @@ export interface StepDef {
   hint?: string[];
   /** The hint sockets are not cord pairs (e.g. a step that removes or moves cords). */
   noCords?: boolean;
+  /** Readings this step asks for. While it is the current step, Record saves only these. */
+  records?: string[];
   hintText?: string;
 }
 
@@ -100,6 +102,8 @@ export interface PracticalDef {
   viva: { q: string; a: string }[];
   defaultRows: number;
   maxRows: number;
+  /** Extra wiring warnings shown on the Workbench (e.g. two circuits joined by mistake). */
+  warnings?: (ctx: StepContext) => string[];
   /** Ready-made readings (e.g. a real lab record) that can be loaded to see the tables, graph and result. */
   example?: { label: string; note: string; rows: Row[] };
   /** Practical source notes, e.g. which Virtual Labs experiment it follows. */

@@ -14,6 +14,7 @@ export function Knob({
   onChange,
   toSvg,
   step: baseStep = 0.1,
+  name = 'Knob',
 }: {
   x: number;
   y: number;
@@ -22,6 +23,7 @@ export function Knob({
   onChange: (v: number) => void;
   toSvg: ToSvg;
   step?: number;
+  name?: string;
 }) {
   const ref = useRef<SVGGElement>(null);
   const drag = useRef<{ lastAngle: number; value: number } | null>(null);
@@ -71,7 +73,7 @@ export function Knob({
       ref={ref}
       tabIndex={0}
       role="slider"
-      aria-label="Set volts"
+      aria-label={name}
       aria-valuemin={0}
       aria-valuemax={max}
       aria-valuenow={+value.toFixed(2)}

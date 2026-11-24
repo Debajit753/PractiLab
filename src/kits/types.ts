@@ -81,6 +81,8 @@ export interface KnobDef {
   step?: number;
   /** Starting value. Default 0. */
   initial?: number;
+  /** Name read out by screen readers (defaults to the label text). */
+  name?: string;
   /** Show a calibrated value box under the knob with this unit (e.g. "Ω"). */
   readout?: string;
 }

@@ -1,6 +1,6 @@
 import { NortonSchematic, TheveninOnlySchematic } from '../components/schematics/TheveninSchematic';
 import { fmtOhms } from '../kits/common';
-import { TH, theveninKit, theveninTheory } from '../kits/thevenin';
+import { circuitsJoined, TH, theveninKit, theveninTheory } from '../kits/thevenin';
 import { pick, type PracticalDef, type Row, type StepDef } from './types';
 
 const has = (rows: Row[], key: string) => rows.some((r) => r[key] != null);
@@ -33,7 +33,7 @@ const networkSteps: StepDef[] = [
     hint: ['outP', 'inP', 'outN', 'inN'],
   },
   {
-    text: 'Put the voltmeter across INPUT + and INPUT −. Switch mains ON, turn SET VOLTS to about 10 V and record Vs.',
+    text: 'Put the voltmeter across INPUT + and INPUT − and switch it to its 20 V range. Switch mains ON, turn SET VOLTS to about 10 V and record Vs.',
     check: ({ rows }) => has(rows, 'Vs'),
     hint: ['Vp', 'inP', 'Vn', 'inN'],
   },
@@ -54,33 +54,52 @@ const rthStep = (name: 'Rth' | 'RN'): StepDef => ({
 
 const IL_TARGETS = [2.5, 3, 3.5, 4, 4.5];
 
+/** IL of this row, or of the last load reading before it (IL' is compared with the RL left in place). */
+const networkIL = (r: Row, rows: Row[]) => {
+  if (r.IL != null) return r.IL as number;
+  for (let i = rows.indexOf(r) - 1; i >= 0; i--) if (rows[i].IL != null && rows[i].VL != null) return rows[i].IL as number;
+  return null;
+};
+
 const theveninSteps: StepDef[] = [
   networkSteps[0],
   {
-    text: 'Put the voltmeter across A and B (no load). Switch mains ON and turn SET VOLTS until the voltmeter reads Vth = 1.05 V (as in the lab record; about 5.16 V on the supply). Record Vth.',
+    text: 'Put the voltmeter across A and B (no load) on its 2 V range. Switch mains ON and turn SET VOLTS until the voltmeter reads Vth = 1.05 V (as in the lab record; about 5.16 V on the supply). Record Vth.',
     check: ({ rows }) => has(rows, 'Vth'),
     hint: ['Vp', 'A', 'Vn', 'B'],
     hintText: 'Hold Shift with the arrow keys or scroll wheel for fine steps of the knob.',
+    records: ['Vth'],
   },
-  rthStep('Rth'),
   {
-    text: 'Put the circuit back (DC OUTPUT to INPUT, input not shorted). Connect the load RL through the milliammeter: A to mA +, mA − to the left RL socket, the right RL socket to B. Voltmeter across A-B. Turn the RL knob until IL = 2.5 mA and record IL and VL.',
+    text: 'Leave SET VOLTS where it is. Connect the load RL through the milliammeter: A to mA +, mA − to the left RL socket, the right RL socket to B. Keep the voltmeter across A-B. Turn the RL knob until IL = 2.5 mA and record IL and VL.',
     check: ({ rows }) => rows.some((r) => r.IL != null && r.VL != null),
-    hint: ['outP', 'inP', 'outN', 'inN', 'A', 'Ap', 'An', 'L1', 'L2', 'B', 'Vp', 'A', 'Vn', 'B'],
+    hint: ['A', 'Ap', 'An', 'L1', 'L2', 'B'],
+    records: ['IL', 'VL'],
   },
   {
-    text: 'Turn RL down until IL reads 3.0, 3.5, 4.0 and 4.5 mA in turn, recording IL and VL each time (the next row is selected for you). RL = VL / IL is worked out in the table.',
+    text: 'Turn RL down until IL reads 3.0, 3.5, 4.0 and 4.5 mA in turn, recording IL and VL each time (the next row is selected for you). RL = VL / IL is worked out in the table. Leave RL at the 4.5 mA position.',
     check: ({ rows }) => rows.filter((r) => r.IL != null && r.VL != null).length >= IL_TARGETS.length,
+    records: ['IL', 'VL'],
   },
   {
-    text: 'Build the Thevenin equivalent: put the voltmeter across VTH + and VTH −, turn SET VTH until it reads your Vth (1.05 V) and record it.',
+    text: 'Find Rth: switch mains OFF and turn SET VOLTS to 0. Unplug the load cords and the INPUT cords, and short INPUT + to INPUT − (this replaces the source by its internal resistance). Feed A-B from the supply: DC OUTPUT + to mA +, mA − to A, DC OUTPUT − to B. Keep the voltmeter across A-B. Switch mains ON, raise SET VOLTS to about 1.5 V and record Vt and It.',
+    check: ({ rows }) => has(rows, 'Vt') && has(rows, 'It'),
+    hint: ['inP', 'inN', 'outP', 'Ap', 'An', 'A', 'outN', 'B'],
+    hintText:
+      'Remove A-mA, RL-B and both DC OUTPUT-INPUT cords. Short INPUT + to INPUT − with one cord. Then DC OUTPUT + → mA +, mA − → A, DC OUTPUT − → B.',
+    records: ['Vt', 'It'],
+  },
+  {
+    text: 'Build the Thevenin equivalent: unplug every cord from the given network. Put the voltmeter across VTH + and VTH −, turn SET VTH until it reads your Vth (1.05 V) and record it.',
     check: ({ rows }) => has(rows, 'Veq'),
     hint: ['Vp', 'VTHp', 'Vn', 'VTHn'],
+    records: ['Veq'],
   },
   {
-    text: "Set the RTH dial to your Rth (about 215 Ω). Choose Reading 5 (RL unchanged). Connect the same RL to the equivalent: A' to mA +, mA − to the left RL socket, the right RL socket to B'. Record IL' and compare it with IL.",
+    text: "Turn the RTH dial to your Rth (Rth = Vt / It, about 215 Ω; see the Observations tab). Do not touch the RL knob. Connect RL to the equivalent: A' to mA +, mA − to the left RL socket, the right RL socket to B'. Record IL'. It is compared with your last network reading (IL = 4.5 mA).",
     check: ({ rows }) => has(rows, 'ILe'),
     hint: ['Aeq', 'Ap', 'An', 'L1', 'L2', 'Beq'],
+    records: ['ILe', 'VLe'],
   },
 ];
 
@@ -102,8 +121,8 @@ const nortonSteps: StepDef[] = [
 const commonMeasured = {
   Vs: { label: 'Vs', unit: 'V', decimals: 2 },
   IL: { label: 'IL', unit: 'mA', decimals: 2 },
-  VL: { label: 'VL', unit: 'V', decimals: 2 },
-  Vt: { label: 'Vt', unit: 'V', decimals: 2 },
+  VL: { label: 'VL', unit: 'V', decimals: 3 },
+  Vt: { label: 'Vt', unit: 'V', decimals: 3 },
   It: { label: 'It', unit: 'mA', decimals: 2 },
 };
 
@@ -212,6 +231,12 @@ export const thevenin: PracticalDef = {
     VLe: { label: "VL'", unit: 'V', decimals: 2 },
   },
   advanceWhen: [['IL', 'VL']],
+  warnings: ({ an }) =>
+    circuitsJoined(an)
+      ? [
+          "The given network and the equivalent circuit are joined by your cords (for example RL plugged into both B and B'). Unplug the network cords before using the equivalent circuit. The meters are not identified until they are separate.",
+        ]
+      : [],
   tables: [
     {
       title: 'Table 1: Experimental observations and results',
@@ -227,8 +252,8 @@ export const thevenin: PracticalDef = {
     {
       title: 'Table 2: Finding VTH and RTH',
       columns: [
-        { key: 'Vth', label: 'Vth (open circuit)', unit: 'V', decimals: 2 },
-        { key: 'Vt', label: 'Vt', unit: 'V', decimals: 2 },
+        { key: 'Vth', label: 'Vth (open circuit)', unit: 'V', decimals: 3 },
+        { key: 'Vt', label: 'Vt', unit: 'V', decimals: 3 },
         { key: 'It', label: 'It', unit: 'mA', decimals: 2 },
         { key: 'Rth', label: 'Rth = Vt / It', unit: 'Ω', decimals: 0, derived: rthRow },
       ],
@@ -238,7 +263,13 @@ export const thevenin: PracticalDef = {
       columns: [
         { key: 'Veq', label: 'VTH set', unit: 'V', decimals: 2 },
         { key: 'ILe', label: "IL' (equivalent)", unit: 'mA', decimals: 2 },
-        { key: 'IL', label: 'IL (network)', unit: 'mA', decimals: 2 },
+        {
+          key: 'ILnet',
+          label: 'IL (network)',
+          unit: 'mA',
+          decimals: 2,
+          derived: (r, rows) => (r.ILe != null ? networkIL(r, rows) : null),
+        },
       ],
     },
   ],
@@ -286,8 +317,8 @@ export const thevenin: PracticalDef = {
       lhsLabel: 'IL network',
       rhsLabel: "IL' equivalent",
       unit: 'mA',
-      lhs: (r) => (r.ILe != null ? r.IL : null),
-      rhs: (r) => (r.IL != null ? r.ILe : null),
+      lhs: (r, rows) => (r.ILe != null ? networkIL(r, rows) : null),
+      rhs: (r, rows) => (networkIL(r, rows) != null ? r.ILe : null),
     },
   ],
   theoryFor: (r, rows) => theoryRow(r, rows, false),
@@ -391,7 +422,7 @@ export const norton: PracticalDef = {
       title: 'Table 2: Norton equivalent',
       columns: [
         { key: 'IN', label: 'IN', unit: 'mA', decimals: 2 },
-        { key: 'Vt', label: 'Vt', unit: 'V', decimals: 2 },
+        { key: 'Vt', label: 'Vt', unit: 'V', decimals: 3 },
         { key: 'It', label: 'It', unit: 'mA', decimals: 2 },
         { key: 'RN', label: 'RN = Vt / It', unit: 'Ω', decimals: 0, derived: rthRow },
         { key: 'ILc', label: 'IL = IN·RN / (RN + RL)', unit: 'mA', decimals: 2, derived: ilFromNorton },

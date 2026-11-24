@@ -276,6 +276,7 @@ export function KitPanel(p: Props) {
             value={p.controls.knobs[k.id] ?? 0}
             max={k.max}
             step={k.step}
+            name={k.name ?? (k.label.join(' ') || k.id)}
             onChange={(v) => p.onKnob(k.id, v)}
             toSvg={toSvg}
           />

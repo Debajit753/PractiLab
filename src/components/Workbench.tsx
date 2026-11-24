@@ -91,6 +91,10 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
     const values: Record<string, number> = {};
     const saved: string[] = [];
     const skipped: string[] = [];
+    const ignored: string[] = [];
+    const replaced: string[] = [];
+    // While a step is current, save only the readings it asks for (stray meters stay out of the table).
+    const allowed = current >= 0 ? practical.steps[current].records : undefined;
     let flipped = false;
     for (const r of readings) {
       if (!r.measurement) continue;
@@ -99,11 +103,17 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
         continue;
       }
       const m = practical.measured[r.measurement.key];
+      if (allowed && !allowed.includes(r.measurement.key)) {
+        ignored.push(m?.label ?? r.measurement.key);
+        continue;
+      }
       const si = readOff(r.display, r, digital || s.showReadout) / UNIT_FACTOR[r.range.unit];
       // Meter wired against the marked direction but reading forwards: the quantity is negative.
       const sign = r.reversed ? -1 : 1;
       if (r.reversed && Math.abs(si) > 0) flipped = true;
       const v = +(sign * si * unitFactor(m?.unit ?? '')).toFixed(6);
+      const old = s.rows[s.activeRow]?.[r.measurement.key];
+      if (old != null && Math.abs(old - v) > 1e-9) replaced.push(`${m?.label ?? r.measurement.key} (was ${old})`);
       values[r.measurement.key] = v;
       saved.push(`${m?.label ?? r.measurement.key} = ${v.toFixed(m?.decimals ?? 2)} ${m?.unit ?? ''}`);
     }
@@ -112,7 +122,9 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
       setToast({
         text: skipped.length
           ? `${skipped.join(', ')}. Swap its + and − cords, then record.`
-          : 'Nothing to record. Connect a meter across a part of the circuit first.',
+          : ignored.length
+            ? `This step does not use ${ignored.join(', ')}. Connect the meter as the current step says.`
+            : 'Nothing to record. Connect a meter across a part of the circuit first.',
         kind: 'warn',
       });
       return;
@@ -137,12 +149,12 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
       }
     }
     setToast({
-      text: `Saved in reading ${row + 1}: ${saved.join(', ')}.${skipped.length ? ` ${skipped.join(', ')}.` : ''}${note}`,
+      text: `Saved in reading ${row + 1}: ${saved.join(', ')}.${replaced.length ? ` Replaced ${replaced.join(', ')}.` : ''}${ignored.length ? ` Not saved (not needed in this step): ${ignored.join(', ')}.` : ''}${skipped.length ? ` ${skipped.join(', ')}.` : ''}${note}`,
       kind: 'ok',
     });
   };
 
-  const warnings: string[] = [];
+  const warnings: string[] = [...(practical.warnings?.({ an, rows: s.rows, controls: c }) ?? [])];
   if (c.fuseBlown)
     warnings.push(
       'Fuse blown! A supply was shorted, usually by an ammeter or a cord placed straight across it (or a decade box set to 0 Ω across it). Fix the wiring, then press Replace fuse.',
@@ -156,7 +168,7 @@ export function Workbench({ practical }: { practical: PracticalDef }) {
       );
     if (Math.abs(r.display) > r.range.full * (digital ? 1.1 : 1.02))
       warnings.push(
-        `${meterName(r)} is over range.${r.meter.ranges.length > 1 ? ' Switch to a higher range or' : ''} Turn the supply down.`,
+        `${meterName(r)} is over range. ${r.meter.ranges.length > 1 ? 'Switch to a higher range or turn the supply down.' : 'Turn the supply down.'}`,
       );
   }
 

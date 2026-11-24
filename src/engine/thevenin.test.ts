@@ -95,6 +95,13 @@ describe("Thevenin's trainer (college layout)", () => {
     within(eq.readings.AM.si, net.readings.AM.si, 0.5);
   });
 
+  it('does not identify any reading while RL joins the network to the equivalent circuit', () => {
+    const joined: [string, string][] = [...theveninKit.solution, ['Aeq', 'Ap'], ['L2', 'Beq']];
+    const a = analyze(theveninKit, wiresFrom(joined), ctl(5.16, 17, { KVTH: 1.05, KRTH: 215 }));
+    expect(a.readings.AM.measurement).toBeNull();
+    expect(a.readings.VM.measurement).toBeNull();
+  });
+
   it('blows the fuse if the load pot at its minimum is put straight across the supply', () => {
     const a = analyze(
       theveninKit,
